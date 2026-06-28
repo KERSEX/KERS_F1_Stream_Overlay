@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>MRL Race Telemetry</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Teko:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-color: rgba(15, 15, 20, 0.85);
+    --row-bg: rgba(30, 30, 40, 0.8);
+    --row-bg-alt: rgba(22, 22, 30, 0.8);
+    --text-main: #ffffff;
+    --text-muted: #8e8e9e;
+    --accent-red: #e10600;
+    --accent-glow: rgba(225, 6, 0, 0.5);
+
+    --team-redbull:   #3671C6;
+    --team-mclaren:   #FF8000;
+    --team-ferrari:   #E80020;
+    --team-mercedes:  #27F4D2;
+    --team-aston:     #229971;
+    --team-haas:      #B6BABD;
+    --team-rb:        #6692FF;
+    --team-alpine:    #0093CC;
+    --team-williams:  #64C4FF;
+    --team-sauber:    #52E252;
+    --team-audi:      #C8102E;   /* 2026: Audi (anpassbar) */
+    --team-cadillac:  #C9A227;   /* 2026: Cadillac (anpassbar) */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    padding: 20px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+    background-color: transparent;
+    overflow: hidden;
+}
+
+.leaderboard-container {
+    position: relative;
+    width: 628px;
+    background: var(--bg-color);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px);
+    overflow: hidden;
+    transform: scale(1.12);
+    transform-origin: top left;
+}
+
+.leaderboard-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-items: center;
+    column-gap: 14px;
+    padding: 18px 24px;
+    background: linear-gradient(90deg, rgba(22,22,30,1) 0%, rgba(40,40,50,1) 100%);
+    border-bottom: 2px solid var(--accent-red);
+}
+
+.championship-title {
+    order: 2;
+    font-family: 'Teko', sans-serif;
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(255,255,255,0.2);
+    line-height: 1;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* "Letzte Runde" / "Safety Car"-Anzeige direkt neben Runde X/Y */
+.session-flag {
+    display: none;
+    margin-left: 14px;
+    font-size: 0.55em;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 3px 13px;
+    border-radius: 20px;
+    vertical-align: middle;
+    text-shadow: none;
+}
+.session-flag.sc  { display: inline-block; color: #2a1f00; background: #ffcc00; animation: flag-blink 1.4s ease-in-out infinite; }
+.session-flag.fin { display: inline-block; color: #fff; background: #15151c; border: 1px solid #fff; }
+@keyframes flag-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.live-indicator {
+    order: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--accent-red);
+    letter-spacing: 1px;
+}
+.live-indicator.waiting { color: var(--text-muted); }
+
+.pulse-dot {
+    width: 10px; height: 10px;
+    background-color: var(--accent-red);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent-glow);
+    animation: pulse 1.5s infinite;
+}
+.waiting .pulse-dot { background-color: var(--text-muted); box-shadow: none; animation: none; }
+
+@keyframes pulse {
+    0%   { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(225,6,0,0.7); }
+    70%  { transform: scale(1);    box-shadow: 0 0 0 6px rgba(225,6,0,0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(225,6,0,0); }
+}
+
+/* POS | strip | DRIVER | LEADER | INTERVAL | TYRE | SECTORS | DRS */
+.leaderboard-row {
+    display: grid;
+    grid-template-columns: 48px 5px 200px 90px 90px 90px 110px 44px;
+    align-items: center;
+    padding: 0 12px;
+    gap: 0 4px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.header-row {
+    height: 36px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    background: rgba(10,10,15,0.9);
+}
+
+.standings-body { position: relative; }
+
+.driver-row {
+    position: absolute;
+    width: 100%;
+    height: 62px;
+    box-sizing: border-box;
+    /* Sanftes Gleiten beim Positionswechsel + weiches Ein-/Ausblenden */
+    transition: transform 0.6s cubic-bezier(0.65, 0, 0.35, 1),
+                background-color 0.5s ease,
+                opacity 0.45s ease;
+    will-change: transform, opacity;
+    opacity: 1;
+}
+.driver-row.entering,
+.driver-row.leaving { opacity: 0; }
+/* alternating set via data-even attr in JS (position-based, not DOM order) */
+.driver-row[data-even="1"] { background: var(--row-bg); }
+.driver-row[data-even="0"] { background: var(--row-bg-alt); }
+
+.col-pos {
+    font-family: 'Teko', sans-serif;
+    font-size: 26px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+}
+/* Podium-Zahlen: metallischer Verlauf + periodischer Glanz-Sweep ("glänzen") */
+.rank-1 .col-pos .rank,
+.rank-2 .col-pos .rank,
+.rank-3 .col-pos .rank {
+    background-repeat: no-repeat;
+    background-size: 280% 100%, 100% 100%;       /* Layer 1 = Glanz (breit), Layer 2 = Metall */
+    background-position: 0% 0, 0 0;
+    -webkit-background-clip: text;
+            background-clip: text;
+    -webkit-text-fill-color: transparent;
+            color: transparent;
+    animation: medal-glint 3.5s ease-in-out infinite;
+}
+.rank-1 .col-pos .rank {   /* Gold */
+    background-image:
+        linear-gradient(115deg, transparent 30%, rgba(255,255,255,1) 50%, transparent 70%),
+        linear-gradient(180deg, #FFF3A6 0%, #FFD700 45%, #C99100 72%, #FFE680 100%);
+}
+.rank-2 .col-pos .rank {   /* Silber */
+    background-image:
+        linear-gradient(115deg, transparent 30%, rgba(255,255,255,1) 50%, transparent 70%),
+        linear-gradient(180deg, #FFFFFF 0%, #C8CFD8 45%, #8A9099 72%, #EAEEF3 100%);
+    animation-delay: -1.3s;
+}
+.rank-3 .col-pos .rank {   /* Bronze */
+    background-image:
+        linear-gradient(115deg, transparent 30%, rgba(255,248,235,1) 50%, transparent 70%),
+        linear-gradient(180deg, #F6C88A 0%, #D2843C 45%, #8C5A2B 72%, #EBA96A 100%);
+    animation-delay: -2.6s;
+}
+@keyframes medal-glint {
+    0%        { background-position: 0% 0, 0 0; }   /* Glanz links, noch nicht auf der Zahl */
+    35%, 100% { background-position: 100% 0, 0 0; } /* schneller Sweep über die Zahl, dann Pause */
+}
+
+/* Positions-Flash: bei Überholung leuchtet die Nummer kurz auf (grün = gewonnen, rot = verloren) */
+@keyframes pos-flash-up {
+    0%   { transform: scale(1.22); text-shadow: 0 0 3px rgba(0,255,136,1), 0 0 14px rgba(0,255,136,0.9); }
+    100% { transform: scale(1);    text-shadow: 0 0 0 rgba(0,255,136,0); }
+}
+@keyframes pos-flash-down {
+    0%   { transform: scale(1.22); text-shadow: 0 0 3px rgba(255,70,70,1), 0 0 14px rgba(255,70,70,0.9); }
+    100% { transform: scale(1);    text-shadow: 0 0 0 rgba(255,70,70,0); }
+}
+.col-pos.pos-flash-up   { animation: pos-flash-up 1.1s ease-out; }
+.col-pos.pos-flash-down { animation: pos-flash-down 1.1s ease-out; }
+
+.change-indicator { font-size: 13px; width: 12px; display: inline-block; transition: opacity 0.3s ease, color 0.3s ease; }
+.change-up   { color: #00ff88; }
+.change-down { color: #ff3333; }
+.change-none { color: transparent; }
+
+.team-color-strip {
+    width: 4px;
+    height: 28px;
+    border-radius: 2px;
+    background: #fff;
+    flex-shrink: 0;
+    transition: background-color 0.4s ease;
+}
+
+.col-driver {
+    font-weight: 600;
+    font-size: 17px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    line-height: 1.2;
+}
+.driver-team-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0.5px;
+}
+
+.col-gap {
+    font-variant-numeric: tabular-nums;
+    font-size: 16px;
+    font-weight: 600;
+    color: #ffcc00;
+    text-align: right;
+    transition: color 0.3s ease;
+}
+.col-gap.leader { color: var(--accent-red); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.col-gap.dnf { color: #888; font-size: 11px; letter-spacing: 1px; }
+.col-gap.dsq { color: #ff6600; font-size: 11px; letter-spacing: 1px; }
+.fl-lap .driver-name { color: #c44dff; }
+.col-gap.in-pit { color: #ffcc00; font-size: 11px; }
+.col-gap.leader-banner {
+    grid-column: span 2;
+    text-align: center;
+}
+
+.col-tyre {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tyre-icon {
+    width: 30px; height: 30px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+/* Boxenstopp: neuer Reifen dreht sich rein */
+@keyframes tyre-spin-in { 0% { transform: rotate(-200deg) scale(0.35); opacity: 0; } 65% { opacity: 1; } 100% { transform: rotate(0) scale(1); opacity: 1; } }
+.tyre-spin { animation: tyre-spin-in 0.6s cubic-bezier(0.2,0.8,0.3,1); }
+.tyre-age {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+.tyre-age b { color: var(--text-main); font-weight: 600; }
+
+.col-lap {
+    font-variant-numeric: tabular-nums;
+    font-size: 17px;
+    font-weight: 600;
+    text-align: right;
+}
+.col-lap.no-data { color: var(--text-muted); font-size: 12px; }
+
+.col-sectors {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12.5px;
+    color: #cccdd6;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+}
+.col-sectors span { color: var(--text-main); font-weight: 600; }
+
+.col-drs {
+    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: all 0.3s;
+}
+.quali-mode .col-drs { display: none; }
+.quali-mode .leaderboard-row {
+    grid-template-columns: 48px 5px 200px 90px 90px 90px 150px;
+}
+.col-drs.in-pit-q {
+    background: rgba(255,200,0,0.12);
+    color: #ffc800;
+    border-color: rgba(255,200,0,0.35);
+}
+.col-drs.active {
+    background: rgba(0,255,136,0.12);
+    color: #00ff88;
+    border-color: rgba(0,255,136,0.35);
+    box-shadow: 0 0 6px rgba(0,255,136,0.2);
+}
+
+/* F1 26 Boost / Override (MOM) – blauer Lichtpunkt läuft am Rand entlang,
+   gleiche Idee wie beim VSC-Rahmen, nur blau und auf der kleinen Pille. */
+@property --mom-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+@keyframes boost-pop {
+    0%   { transform: scale(0.85); }
+    55%  { transform: scale(1.07); }
+    100% { transform: scale(1); }
+}
+@keyframes mom-text-glow {
+    0%, 100% { text-shadow: 0 0 4px rgba(47,217,255,0.35); }
+    50%      { text-shadow: 0 0 9px rgba(140,235,255,0.85); }
+}
+/* 2026 Overtake Mode verfügbar (im 1s-Fenster), aber noch nicht aktiviert */
+.col-drs.boost-ready {
+    background: rgba(0,150,255,0.06);
+    color: #7fc7ff;
+    border-color: rgba(0,150,255,0.22);
+}
+.col-drs.boost-active {
+    position: relative;
+    background: rgba(0,150,255,0.12);
+    color: #2fd9ff;
+    border-color: rgba(0,180,255,0.30);
+    /* Einmaliger "Pop" beim Aktivieren + sanft atmender Text-Glow auf "MOM" */
+    animation: boost-pop 0.35s cubic-bezier(0.34,1.56,0.64,1),
+               mom-text-glow 2.6s ease-in-out infinite;
+}
+.col-drs.boost-active::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 3px;          /* wie .col-drs */
+    padding: 2px;                /* Dicke des Laufrands */
+    /* Komet: heller Kopf am Startwinkel, Schweif klingt nach hinten aus */
+    background: conic-gradient(from var(--mom-angle),
+                  rgba(150,240,255,1)    0deg,
+                  rgba(90,226,255,0.6)   20deg,
+                  rgba(47,217,255,0.28)  55deg,
+                  rgba(47,217,255,0.10)  100deg,
+                  rgba(47,217,255,0)     160deg,
+                  rgba(47,217,255,0)     360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+    animation: mom-run 6s linear infinite;
+}
+@keyframes mom-run { to { --mom-angle: 360deg; } }
+
+/* Battery ERS removed */
+
+/* Ticker */
+.ticker-wrap {
+    overflow: hidden;
+    order: 3;
+    flex: 0 0 100%;
+    margin: 9px 0 0;
+    min-height: 74px;
+    display: flex;
+    align-items: center;
+}
+.ticker-items {
+    display: flex;
+    gap: 0;
+}
+.ticker-item {
+    font-family: 'Teko', sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    position: absolute;
+    transition: opacity 0.5s ease;
+}
+.ticker-item.active {
+    opacity: 1;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+.tk-now { color: #fff; font-size: 26px; }
+/* Wetter: aktuelles Wetter + Vorhersagen als gleich große Felder (Chip),
+   vertikal gestapelt: Zeit oben, Emoji Mitte, Regen% unten. */
+.fc-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    box-sizing: border-box;
+    min-width: 98px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    line-height: 1;
+}
+.fc-chip.fc-now { background: rgba(255,255,255,0.11); }
+.fc-chip .fc-t    { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
+.fc-chip .fc-ico  { font-size: 22px; }
+.fc-chip .fc-rain { font-size: 15px; font-weight: 600; color: #4db8ff; }
+
+/* Sectors hidden in race */
+.sectors-hidden .col-sectors { display: none; }
+.sectors-hidden .leaderboard-row {
+    grid-template-columns: 48px 5px 200px 90px 90px 90px 44px !important;
+}
+.quali-mode {
+    width: 732px;
+}
+.quali-mode .leaderboard-row {
+    grid-template-columns: 48px 5px 200px 90px 90px 90px 150px 44px;
+}
+
+/* ══ Safety Car ══ kräftig leuchtender, weicher gelber Rand (Puls) ════════════ */
+@keyframes sc-glow {
+    0%, 100% {
+        border-color: #ffcc00;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5),
+                    inset 0 0 30px 5px rgba(255,196,0,0.45),
+                    0 0 18px 3px rgba(255,196,0,0.50);
+    }
+    50% {
+        border-color: #ffe680;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5),
+                    inset 0 0 52px 13px rgba(255,196,0,0.90),
+                    0 0 26px 6px rgba(255,204,0,0.90);
+    }
+}
+.leaderboard-container.sc-active {
+    border-width: 2px;
+    border-style: solid;
+    border-color: #ffcc00;
+    animation: sc-glow 1.9s ease-in-out infinite;  /* kräftiger Glow, leicht blinkend */
+}
+
+/* ══ Virtual Safety Car ══ Lichtpunkt läuft am Rand entlang (kein Blinken) ═════ */
+@property --vsc-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+.leaderboard-container.vsc-active {
+    border-width: 2px;
+    border-style: solid;
+    border-color: rgba(255,204,0,0.22);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5),
+                inset 0 0 16px 1px rgba(255,204,0,0.18);
+}
+.leaderboard-container.vsc-active::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    padding: 4px;                 /* Dicke des Laufrands */
+    background: conic-gradient(from var(--vsc-angle),
+                  rgba(255,204,0,0)    0deg,
+                  rgba(255,204,0,0.45) 50deg,
+                  rgba(255,214,51,1)   90deg,
+                  rgba(255,204,0,0.45) 130deg,
+                  rgba(255,204,0,0)    180deg,
+                  rgba(255,204,0,0.45) 230deg,
+                  rgba(255,214,51,1)   270deg,
+                  rgba(255,204,0,0.45) 310deg,
+                  rgba(255,204,0,0)    360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    pointer-events: none;
+    z-index: 25;
+    animation: vsc-run 4s linear infinite;  /* smooth, langsam */
+}
+@keyframes vsc-run { to { --vsc-angle: 360deg; } }
+
+/* ══ Bottom-center "Battle"-Box (F1-Broadcast-Stil) ═══════════════════════════ */
+#battle-area {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 28px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 16px;
+    z-index: 40;
+    pointer-events: none;
+}
+.battle-box {
+    width: 310px;
+    background: rgba(16,16,22,0.92);
+    border-radius: 11px;
+    border: 1px solid rgba(255,255,255,0.07);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+    display: none;
+}
+.battle-box.in  { animation: box-in 0.7s cubic-bezier(0.2,0.85,0.3,1) both; }
+.battle-box.out { animation: box-out 0.5s ease-in forwards; }
+@keyframes box-in  { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: none; } }
+@keyframes box-out { to   { opacity: 0; transform: translateY(10px) scale(0.97); } }
+
+.battle-header {
+    position: relative;
+    text-align: center;
+    font-family: 'Teko', sans-serif;
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #fff;
+    background: linear-gradient(180deg, #1b1b22, #111116);
+    padding: 7px 0 6px;
+}
+.battle-header::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-red) 35%, #ff5a3c 50%, var(--accent-red) 65%, transparent);
+    box-shadow: 0 0 8px rgba(225,6,0,0.6);
+}
+.battle-sub {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-family: 'Teko', sans-serif;
+    text-transform: uppercase;
+    background: rgba(225,6,0,0.12);
+    padding: 4px 0 3px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.battle-sub.show { display: flex; }
+.battle-sub .bs-ico  { font-size: 15px; }
+.battle-sub .bs-txt  { font-size: 14px; font-weight: 500; letter-spacing: 1.5px; color: #ffb38a; }
+.battle-sub .bs-laps { font-size: 21px; font-weight: 700; color: #ffd000; line-height: 1; }
+.battle-sub .bs-laps.now { color: #ff5a5a; }
+.battle-sub .bs-unit { font-size: 14px; font-weight: 500; letter-spacing: 1px; color: #ffb38a; }
+@keyframes bs-pop { 0% { transform: scale(1.5); } 100% { transform: scale(1); } }
+.battle-sub .bs-pop { animation: bs-pop 0.4s ease-out; display: inline-block; }
+.battle-rows { position: relative; }
+.battle-row {
+    position: absolute; left: 0; right: 0; top: 0;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 14px;
+    height: 44px;
+    border-left: 4px solid var(--row-team, #fff);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: transform 0.55s cubic-bezier(0.22,0.61,0.36,1), opacity 0.4s ease;
+    will-change: transform;
+}
+.battle-row.entering { opacity: 0; }
+.battle-row::before {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--row-team, #fff), transparent 42%);
+    opacity: 0.10; pointer-events: none;
+}
+.bd-pos { position: relative; width: 24px; flex-shrink: 0; font-family: 'Teko', sans-serif; font-size: 24px; font-weight: 600; color: #fff; line-height: 1; text-align: center; }
+.bd-name { position: relative; flex: 1; min-width: 0; font-weight: 600; font-size: 15px; text-transform: uppercase; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
+.bd-tyre { position: relative; width: 26px; height: 26px; object-fit: contain; flex-shrink: 0; }
+.bd-right { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-shrink: 0; }
+.gap-bar { position: absolute; left: 8px; right: 8px; top: 0; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.07); overflow: hidden; pointer-events: none; z-index: 1; }
+.gap-bar-fill { width: 0; height: 100%; border-radius: 2px; transition: width 0.2s linear, background 0.3s; }
+.bd-gap { position: relative; min-width: 58px; font-family: 'Teko', sans-serif; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 21px; letter-spacing: 0.5px; text-align: right; color: #ffcc00; }
+.bd-gap-lead { color: rgba(255,255,255,0.22); }
+
+/* ════ Quali: Elimination, Sektor-Farben, Status ════════════════════════════ */
+.quali-mode .col-drs { display: flex; align-items: center; justify-content: center; }   /* in der Quali = Status */
+.quali-mode .leaderboard-row { grid-template-columns: 46px 5px 184px 90px 78px 80px 116px 86px; }
+.driver-row.elim-zone { background: rgba(225,6,0,0.22) !important; }
+.driver-row.elim-zone .rank { color: #ff9090; }
+.driver-row.elim-zone .driver-name { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.driver-row.elim-zone .driver-team-sub { color: #d9a0a0; }
+.driver-row.elim-zone .col-sectors { color: #e2e2e8; }
+.driver-row.elim-zone .col-gap,
+.driver-row.elim-zone .col-lap { text-shadow: 0 1px 2px rgba(0,0,0,0.55); }
+#elim-line { position: absolute; left: 0; right: 0; height: 0; z-index: 25; pointer-events: none; display: none; }
+#elim-line::after { content: ""; position: absolute; left: 8px; right: 8px; top: -1px; height: 2px;
+    background: linear-gradient(90deg, transparent, #ff2a1a 18%, #ff2a1a 82%, transparent);
+    box-shadow: 0 0 10px rgba(225,6,0,0.9); }
+#elim-line::before {
+    content: "ELIMINATION";
+    position: absolute; left: 50%; top: 0;
+    transform: translate(-50%, -50%);
+    padding: 2px 16px;
+    background: #15151c;
+    border: 1px solid rgba(255,60,45,0.85);
+    border-radius: 11px;
+    font-family: 'Teko', sans-serif;
+    font-size: 15px; font-weight: 700; letter-spacing: 4px;
+    color: #ff6b6b;
+    white-space: nowrap;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.6);
+}
+.col-sectors span.sp { color: #b14bff; }
+.col-sectors span.sg { color: #00d56a; }
+.col-sectors span.sy { color: #ffd000; }
+.col-drs.st { font-size: 11px; padding: 3px 6px; letter-spacing: 0.7px; }
+.col-drs.st-track { color: #00e676; background: rgba(0,230,118,0.12); border-color: rgba(0,230,118,0.4); }
+.col-drs.st-out   { color: #ffd000; background: rgba(255,208,0,0.12); border-color: rgba(255,208,0,0.4); }
+.col-drs.st-box   { color: #9aa0aa; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.14); }
+
+/* ════ Pit-Stop-Popup (Rennen, unten links) ════════════════════════════════ */
+#pit-stack { position: fixed; right: 24px; bottom: 28px; z-index: 45; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none; }
+.pit-card { width: 280px; background: rgba(16,16,22,0.94); border-radius: 11px; border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55); overflow: hidden; animation: box-in 0.45s cubic-bezier(0.2,0.9,0.3,1); }
+.pit-card.leaving { animation: box-out 0.4s ease-in forwards; }
+.pp-head { text-align: center; font-family: 'Teko', sans-serif; font-weight: 700; font-size: 16px; letter-spacing: 3px;
+    background: linear-gradient(180deg,#1b1b22,#111116); padding: 5px 0 4px; position: relative; }
+.pp-head::after { content:""; position:absolute; left:0; right:0; bottom:0; height:2px; background:linear-gradient(90deg,transparent,#e10600,transparent); }
+.pp-body { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-left: 4px solid var(--pt,#fff); position: relative; }
+.pp-body::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,var(--pt,#fff),transparent 45%); opacity:.10; }
+.pp-name { position: relative; flex: 1; font-weight: 600; font-size: 15px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-tyres { position: relative; display: flex; align-items: center; gap: 6px; }
+.pp-tyres img { width: 28px; height: 28px; object-fit: contain; }
+.pp-arrow { color: #6a6a78; }
+.pp-time { position: relative; font-family: 'Teko', sans-serif; font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; color: #00e676; min-width: 46px; text-align: right; }
+@keyframes tyre-spin-pp { 0% { transform: rotate(-200deg) scale(0.3); opacity: 0; } 65% { opacity: 1; } 100% { transform: rotate(0) scale(1); opacity: 1; } }
+.pp-spin { animation: tyre-spin-pp 0.6s cubic-bezier(0.2,0.8,0.3,1); }
+
+/* ════ Overtake-Meldung (oben mittig) ══════════════════════════════════════ */
+#race-msg { position: fixed; top: 22px; left: 50%; transform: translate(-50%, -18px); display: flex; align-items: center; gap: 12px;
+    height: 50px; padding: 0 18px; background: rgba(16,16,22,0.95); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
+    border-left: 4px solid var(--rm-accent, #00e676); box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 46; opacity: 0;
+    transition: opacity 0.35s, transform 0.45s cubic-bezier(0.2,0.9,0.3,1); pointer-events: none; }
+#race-msg.show { opacity: 1; transform: translate(-50%, 0); }
+#race-msg .rm-icon { color: var(--rm-accent, #00e676); font-size: 20px; line-height: 1; }
+#race-msg .rm-text { font-weight: 600; font-size: 15px; text-transform: uppercase; }
+#race-msg .rm-text small { color: #9aa0aa; font-weight: 400; text-transform: none; }
+
+/* ════ Q5: Track-Limits / ungültige Runde -> Sektoren rot ════════════════════ */
+.driver-row.lap-invalid .col-sectors { color: #ff6b6b; }
+.driver-row.lap-invalid .col-sectors span { color: #ff3b30 !important; }
+
+/* ════ R6: Box-Strategie-Panel (unten links, nur Rennen) ════════════════════ */
+#strat-panel {
+    position: fixed; left: 24px; bottom: 28px; width: 300px; z-index: 40;
+    background: rgba(16,16,22,0.92); border-radius: 11px; border: 1px solid rgba(255,255,255,0.07);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55); backdrop-filter: blur(12px); overflow: hidden;
+    font-family: 'Inter', sans-serif; display: none;
+}
+.strat-head { text-align: center; font-family: 'Teko', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: 4px;
+    text-transform: uppercase; color: #fff; background: linear-gradient(180deg,#1b1b22,#111116); padding: 6px 0 5px; position: relative; }
+.strat-head::after { content:""; position:absolute; left:0; right:0; bottom:0; height:2px;
+    background: linear-gradient(90deg, transparent, #00b3ff 35%, #4ad6ff 50%, #00b3ff 65%, transparent); box-shadow: 0 0 8px rgba(0,160,255,0.6); }
+.strat-row { display: flex; align-items: center; gap: 9px; height: 38px; padding: 0 12px; position: relative; border-left: 4px solid var(--row-team,#fff); }
+.strat-row::before { content:""; position:absolute; inset:0; background: linear-gradient(90deg, var(--row-team,#fff), transparent 45%); opacity: 0.10; }
+.strat-pos { position: relative; width: 20px; font-family: 'Teko', sans-serif; font-size: 19px; font-weight: 600; text-align: center; }
+.strat-name { position: relative; flex: 1; min-width: 0; font-weight: 600; font-size: 13px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strat-stints { position: relative; display: flex; align-items: center; gap: 3px; }
+.strat-stints img { width: 20px; height: 20px; object-fit: contain; }
+.strat-stints .arr { color: #6a6a78; font-size: 10px; }
+.strat-stops { position: relative; font-family: 'Teko', sans-serif; font-size: 13px; font-weight: 600; color: #cfd0d8; min-width: 46px; text-align: right; }
+.strat-stops b { color: #fff; }
+
+/* ════ A1: "Warte auf Telemetrie"-Zustand ═══════════════════════════════════ */
+.leaderboard-container.disconnected { min-height: 200px; }
+#waiting-overlay {
+    position: absolute; inset: 0; z-index: 60; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: rgba(12,12,16,0.93); backdrop-filter: blur(3px); border-radius: 12px; text-align: center; padding: 20px;
+}
+.leaderboard-container.disconnected #waiting-overlay { display: flex; }
+#waiting-overlay .wo-pulse { width: 16px; height: 16px; border-radius: 50%; background: #ffcc00; animation: wait-pulse 1.6s infinite; }
+@keyframes wait-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,204,0,0.5); } 70% { box-shadow: 0 0 0 16px rgba(255,204,0,0); } 100% { box-shadow: 0 0 0 0 rgba(255,204,0,0); } }
+#waiting-overlay .wo-title { font-family: 'Teko', sans-serif; font-size: 30px; font-weight: 700; letter-spacing: 3px; }
+#waiting-overlay .wo-sub { font-size: 14px; color: #9a9aa8; }
+
+</style>
+</head>
+<body>
+<div class="leaderboard-container disconnected">
+
+  <div id="waiting-overlay">
+    <div class="wo-pulse"></div>
+    <div class="wo-title">WARTE AUF TELEMETRIE…</div>
+    <div class="wo-sub">F1 starten · UDP-Format „2026" · Port 20777</div>
+  </div>
+
+
+  <div class="leaderboard-header">
+    <h1 class="championship-title">
+      <span id="sessionTitle">—</span><span id="sessionSub" style="font-size:0.72em;font-weight:700;color:rgba(255,255,255,0.9);margin-left:14px;letter-spacing:1px;"></span><span id="sessionFlag" class="session-flag"></span>
+    </h1>
+    <div class="ticker-wrap">
+      <span class="ticker-item active" id="ticker-text">—</span>
+    </div>
+    <div class="live-indicator waiting" id="liveIndicator">
+      <span class="pulse-dot"></span>
+    </div>
+  </div>
+
+  <div class="leaderboard-row header-row">
+    <div>POS</div>
+    <div></div>
+    <div>DRIVER</div>
+    <div style="text-align:right" id="hdr-leader">LEADER</div>
+    <div style="text-align:right" id="hdr-interval">INTERVAL</div>
+    <div>TYRE</div>
+    <div class="col-sectors">SECTORS</div>
+    <div class="col-drs" id="drs-header" style="text-align:center">DRS</div>
+  </div>
+
+  <div id="standings-body" class="standings-body"><div id="elim-line"></div></div>
+
+</div>
+
+<div id="battle-area">
+  <div class="battle-box"><div class="battle-header"></div><div class="battle-sub"></div><div class="battle-rows"></div></div>
+  <div class="battle-box"><div class="battle-header"></div><div class="battle-sub"></div><div class="battle-rows"></div></div>
+  <div class="battle-box"><div class="battle-header"></div><div class="battle-sub"></div><div class="battle-rows"></div></div>
+  <div class="battle-box"><div class="battle-header"></div><div class="battle-sub"></div><div class="battle-rows"></div></div>
+</div>
+
+<div id="strat-panel"><div class="strat-head">Strategie</div><div class="strat-rows"></div></div>
+
+<div id="pit-stack"></div>
+<div id="race-msg"><span class="rm-icon"></span><span class="rm-text"></span></div>
+
+<template id="row-tpl">
+  <div class="leaderboard-row driver-row">
+    <div class="col-pos">
+      <span class="rank"></span>
+      <span class="change-indicator change-none">-</span>
+    </div>
+    <div class="team-color-strip"></div>
+    <div class="col-driver">
+      <span class="driver-name"></span>
+      <span class="driver-team-sub"></span>
+    </div>
+    <div class="col-gap"></div>
+    <div class="col-lap no-data">—</div>
+    <div class="col-tyre">
+      <img class="tyre-icon" alt="">
+      <div class="tyre-age"></div>
+    </div>
+    <div class="col-sectors">
+      <div>S1: <span class="s1">—</span></div>
+      <div>S2: <span class="s2">—</span></div>
+      <div>S3: <span class="s3">—</span></div>
+    </div>
+    <div class="col-drs">DRS</div>
+  </div>
+</template>
+
+<script>
+const ROW_HEIGHT = 62;
+const TEAM_COLORS = {
+  "Red Bull":     "var(--team-redbull)",
+  "Ferrari":      "var(--team-ferrari)",
+  "McLaren":      "var(--team-mclaren)",
+  "Mercedes":     "var(--team-mercedes)",
+  "Aston Martin": "var(--team-aston)",
+  "Haas":         "var(--team-haas)",
+  "RB":           "var(--team-rb)",
+  "Alpine":       "var(--team-alpine)",
+  "Williams":     "var(--team-williams)",
+  "Sauber":       "var(--team-sauber)",
+  "Audi":         "var(--team-audi)",
+  "Cadillac":     "var(--team-cadillac)",
+};
+const TYRE_COLOR = { S:"#E8002D", M:"#FFC906", H:"#EBEBEB", I:"#39B54A", W:"#0067FF", E:"#00CFFF", "?":"#555" };
+const TYRE_ICONS = { S:1, M:1, H:1, I:1, W:1 };   // static/<X>.png
+function setTyreIcon(img, comp) {
+  if (TYRE_ICONS[comp]) {
+    const src = `static/${comp}.png`;
+    if (img.getAttribute("src") !== src) {
+      const hadTyre = !!img.getAttribute("src");   // war schon ein Reifen drauf?
+      img.src = src;
+      img.style.visibility = "visible";
+      if (hadTyre) {   // echter Wechsel (Boxenstopp) -> neuer Reifen dreht sich rein
+        img.classList.remove("tyre-spin"); void img.offsetWidth; img.classList.add("tyre-spin");
+      }
+    }
+  } else { img.removeAttribute("src"); img.style.visibility = "hidden"; }
+}
+const tyreIconHTML = comp => TYRE_ICONS[comp]
+  ? `<img class="bd-tyre" src="static/${comp}.png" alt="${comp}">`
+  : `<img class="bd-tyre" alt="" style="visibility:hidden">`;
+
+let prevStandings = [];
+let tickerIndex = 0;
+let tickerItems = [];
+let tickerShown = "";   // aktuell sichtbarer Laufband-Inhalt -> nur bei Änderung neu einblenden
+let lastSession = null;
+
+function fmtTime(s) {
+  if (!s || s <= 0) return null;
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(3).padStart(6, "0");
+  return m > 0 ? `${m}:${sec}` : sec;
+}
+
+function fmtGap(s) {
+  if (!s || s <= 0) return "0.000";
+  return `+${s.toFixed(3)}`;
+}
+
+// ── Ticker ────────────────────────────────────────────────────────────────────
+function buildTickerItems(session) {
+  const items = [];
+  if (session.weather_name) {
+    const nowEmoji = session.weather_emoji || "";
+    const nowRain  = session.weather_rain != null ? session.weather_rain : 0;
+    let html = `<span class="fc-chip fc-now"><span class="fc-t">Jetzt</span>`
+      + `<span class="fc-ico">${nowEmoji}</span><span class="fc-rain">${nowRain}%</span></span>`;
+    const fc = (session.forecast || []).slice(0, 3);
+    html += fc.map(f =>
+      `<span class="fc-chip"><span class="fc-t">+${f.t} Min</span>`
+      + `<span class="fc-ico">${f.emoji}</span><span class="fc-rain">${f.rain}%</span></span>`
+    ).join("");
+    items.push(html);
+  }
+  // In der Quali nur Wetter zeigen (kein FL -> kein Größensprung im Laufband)
+  if (!session.is_quali && session.fastest_lap_driver && session.fastest_lap_time > 0)
+    items.push(`<span class="tk-now">⚡ FL: ${fmtTime(session.fastest_lap_time)}  ${esc(session.fastest_lap_driver)}</span>`);
+  return items.length ? items : [`<span class="tk-now">MRL Race Telemetry</span>`];
+}
+
+function rotateTicker(session) {
+  tickerItems = buildTickerItems(session);
+  tickerIndex = (tickerIndex + 1) % tickerItems.length;
+  const nextHTML = tickerItems[tickerIndex];
+  // Gleicher Inhalt (z.B. in der Quali nur Wetter, unverändert) -> NICHT aufblinken.
+  // Nur neu einblenden, wenn sich der Text wirklich ändert (z.B. +10 Min -> +5 Min).
+  if (nextHTML === tickerShown) return;
+  const el = document.getElementById("ticker-text");
+  el.style.opacity = "0";
+  setTimeout(() => {
+    el.innerHTML = nextHTML;
+    tickerShown = nextHTML;
+    el.style.opacity = "1";
+  }, 500);
+}
+
+// Rotate every 5 seconds
+setInterval(() => { if (lastSession) rotateTicker(lastSession); }, 5000);
+
+// ── Neue Features: State + Helfer ──────────────────────────────────────────────
+const esc = s => (s || "").replace(/</g, "&lt;");
+let secBest = [Infinity, Infinity, Infinity];   // Session-Bestzeit pro Sektor (Quali)
+const drvSecBest = {};                            // Bestzeit pro Fahrer pro Sektor
+let lastSecType = null;                            // Session-Typ-Wechsel -> Bests reset
+const lastComp = {};                               // letzter Compound je Fahrer (Pit-Erkennung)
+let battlePred = null, rcQueue = [], rcBusy = false, lastRcId = 0, lastScMsg = null;
+const gapSample = {};                              // {idx:{t,gap}} für Schließrate
+
+function colorSectors(row, idx, secs) {
+  const cls = ["s1", "s2", "s3"];
+  const pb = drvSecBest[idx] || (drvSecBest[idx] = [Infinity, Infinity, Infinity]);
+  secs.forEach((v, i) => {
+    const span = row.querySelector("." + cls[i]);
+    span.classList.remove("sp", "sg", "sy");
+    if (!(v > 0)) return;
+    if (v <= secBest[i] + 0.005) span.classList.add("sp");        // Session-Best
+    else if (v <= pb[i] + 0.005) span.classList.add("sg");        // persönlich
+    else span.classList.add("sy");                                // langsamer
+    if (v < secBest[i]) secBest[i] = v;
+    if (v < pb[i]) pb[i] = v;
+  });
+}
+function clearSectorColors(row) { row.querySelectorAll(".col-sectors span").forEach(s => s.classList.remove("sp", "sg", "sy")); }
+// Box/Outlap: schnellste (Best-)Sektoren des Fahrers anzeigen, nur-lesend (kein Update).
+// Lila = Session-Best, sonst grün = persönliche Bestzeit.
+function showBestSectors(row, idx) {
+  const cls = ["s1", "s2", "s3"];
+  const pb = drvSecBest[idx] || (drvSecBest[idx] = [Infinity, Infinity, Infinity]);
+  pb.forEach((v, i) => {
+    const span = row.querySelector("." + cls[i]);
+    span.classList.remove("sp", "sg", "sy");
+    if (!(v > 0 && v < Infinity)) { span.textContent = "—"; return; }
+    span.textContent = fmtTime(v);
+    span.classList.add(v <= secBest[i] + 0.005 ? "sp" : "sg");
+  });
+}
+
+const pitTyreImg = (c, cls = "") => TYRE_ICONS[c] ? `<img class="${cls}" src="static/${c}.png" alt="${c}">` : "";
+function showPitPop(d, oldC, newC) {
+  const stack = document.getElementById("pit-stack");
+  const card = document.createElement("div");
+  card.className = "pit-card";
+  card.style.setProperty("--pt", TEAM_COLORS[d.team] || "#fff");
+  card.innerHTML = `<div class="pp-head">PIT STOP</div>`
+    + `<div class="pp-body"><span class="pp-name">${esc(d.name)}</span>`
+    + `<span class="pp-tyres">${pitTyreImg(oldC)}<span class="pp-arrow">→</span>${pitTyreImg(newC, "pp-spin")}</span>`
+    + `<span class="pp-time">${d.pit_time > 0 ? d.pit_time.toFixed(1) + "s" : ""}</span></div>`;
+  stack.appendChild(card);                                   // neuer Stopp unten an den Stack
+  while (stack.children.length > 3) stack.removeChild(stack.firstChild);   // max. 3, ältester raus
+  setTimeout(() => { card.classList.add("leaving"); setTimeout(() => card.remove(), 400); }, 5000);
+}
+
+// Rennleitung: ein Meldungs-Feed oben, der Events nacheinander durchwechselt.
+function raceMsg(icon, html, accent) {
+  rcQueue.push({ icon, html, accent });
+  if (rcQueue.length > 10) rcQueue.shift();   // Stau begrenzen
+  processRaceMsg();
+}
+function processRaceMsg() {
+  if (rcBusy || !rcQueue.length) return;
+  rcBusy = true;
+  const m = rcQueue.shift();
+  const el = document.getElementById("race-msg");
+  el.style.setProperty("--rm-accent", m.accent);
+  el.querySelector(".rm-icon").textContent = m.icon;
+  el.querySelector(".rm-text").innerHTML = m.html;
+  el.classList.add("show");
+  setTimeout(() => {
+    el.classList.remove("show");
+    setTimeout(() => { rcBusy = false; processRaceMsg(); }, 450);   // kurze Pause -> nächste Meldung
+  }, 2800);
+}
+
+// Kampf-Vorhersage: Schließrate aus gap_to_ahead über Zeit -> grobe Runden bis Kontakt.
+function updateBattlePrediction(drivers, active) {
+  if (!active) { battlePred = null; return; }
+  const now = performance.now() / 1000;
+  let best = null;
+  drivers.forEach((d, i) => {
+    if (i === 0 || d.in_pit || d.dnf || d.dsq) return;
+    const g = d.gap_to_ahead, prev = gapSample[d.index];
+    if (prev && now - prev.t > 1.2) {
+      const rate = (prev.gap - g) / (now - prev.t);
+      gapSample[d.index] = { t: now, gap: g };
+      if (rate > 0.01 && g > 0.4 && g < 6) {
+        const laps = g / (rate * (d.last_lap > 30 ? d.last_lap : 90));
+        if (laps >= 1 && laps <= 9 && (!best || laps < best.laps))
+          best = { laps: Math.round(laps), aIdx: drivers[i - 1].index, bIdx: d.index };
+      }
+    } else if (!prev) gapSample[d.index] = { t: now, gap: g };
+  });
+  battlePred = best;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+async function fetchAndRender() {
+  try {
+    const res = await fetch("/api/live");
+    const data = await res.json();
+    console.log("[MRL] drivers:", data.drivers?.length, "connected:", data.connected);
+    render(data);
+  } catch(e) { console.error("[MRL] fetch error:", e); }
+}
+
+function render(data) {
+  const indicator = document.getElementById("liveIndicator");
+  const liveText  = document.getElementById("liveText");
+  if (data.connected) {
+    indicator.className = "live-indicator";
+    if (liveText) liveText.textContent = "LIVE";
+  } else {
+    indicator.className = "live-indicator waiting";
+    if (liveText) liveText.textContent = "WAITING";
+  }
+
+  const sessionData = data.session || {};
+
+  // F1 26: statt DRS gibt es den "Overtake Mode" (eigenes UDP-Paket) -> Label "MOM".
+  const isF126 = sessionData.formula === 13 || /26/.test(sessionData.formula_name || "");
+  const boostLabel = isF126 ? "MOM" : "DRS";
+  const drsHeader = document.getElementById("drs-header");
+  const hdrLeader = document.getElementById("hdr-leader");
+  const hdrInterval = document.getElementById("hdr-interval");
+  if (sessionData.is_quali) {                 // Quali-Spalten: BEST · GAP · STATUS
+    if (hdrLeader) hdrLeader.textContent = "BEST";
+    if (hdrInterval) hdrInterval.textContent = "GAP";
+    if (drsHeader) drsHeader.textContent = "STATUS";
+  } else {
+    if (hdrLeader) hdrLeader.textContent = "LEADER";
+    if (hdrInterval) hdrInterval.textContent = "INTERVAL";
+    if (drsHeader) drsHeader.textContent = boostLabel;
+  }
+  // Sektor-Bestzeiten bei Session-Wechsel zurücksetzen
+  if (sessionData.type !== lastSecType) { lastSecType = sessionData.type; secBest = [Infinity, Infinity, Infinity]; for (const k in drvSecBest) delete drvSecBest[k]; }
+
+  // Session title
+  const titleEl = document.getElementById("sessionTitle");
+  const subEl = document.getElementById("sessionSub");
+
+  if (sessionData.is_quali) {
+    // Quali: "Q1" im Titel, Zeit im Sub
+    if (sessionData.type_name && sessionData.type_name !== "Unbekannt") {
+      titleEl.textContent = sessionData.type_name.toUpperCase();
+    }
+    if (sessionData.time_left > 0) {
+      const m = Math.floor(sessionData.time_left / 60);
+      const s = Math.floor(sessionData.time_left % 60).toString().padStart(2, "0");
+      subEl.textContent = `${m}:${s}`;
+    } else {
+      subEl.textContent = "";
+    }
+  } else {
+    // Rennen: nur "Runde X / Y" — kein "RENNEN"
+    titleEl.textContent = "";
+    if (sessionData.total_laps > 0) {
+      subEl.textContent = `Runde ${sessionData.current_lap} / ${sessionData.total_laps}`;
+    } else {
+      subEl.textContent = "";
+    }
+  }
+
+  if (!lastSession) {
+    lastSession = sessionData;
+    const el = document.getElementById("ticker-text");
+    const items = buildTickerItems(sessionData);
+    el.innerHTML = items[0] || "—";
+    tickerShown = items[0] || "—";
+    el.style.opacity = "1";
+  } else {
+    lastSession = sessionData;
+  }
+
+  // Sectors visible only in quali
+  const container = document.getElementById("standings-body");
+  const outerContainer = document.querySelector(".leaderboard-container");
+  if (sessionData.is_quali) {
+    outerContainer.classList.remove("sectors-hidden");
+    outerContainer.classList.add("quali-mode");
+  } else {
+    outerContainer.classList.add("sectors-hidden");
+    outerContainer.classList.remove("quali-mode");
+  }
+
+  // A1: "Warte auf Telemetrie"-Overlay, wenn keine Daten ankommen
+  outerContainer.classList.toggle("disconnected", !data.connected);
+
+  // Safety Car / Virtual Safety Car Glow-Rahmen
+  const scStatus = data.connected ? sessionData.safety_car_status : "none";
+  outerContainer.classList.toggle("sc-active",  scStatus === "sc");
+  outerContainer.classList.toggle("vsc-active", scStatus === "vsc");
+  // "Safety Car" / "Letzte Runde" als kompaktes Badge direkt neben Runde X/Y
+  const finalLap = !sessionData.is_quali && sessionData.total_laps > 0 && sessionData.current_lap >= sessionData.total_laps;
+  const flag = document.getElementById("sessionFlag");
+  if (flag) {
+    if (scStatus === "sc")       { flag.className = "session-flag sc";  flag.textContent = "Safety Car"; }
+    else if (scStatus === "vsc") { flag.className = "session-flag sc";  flag.textContent = "Virtual SC"; }
+    else if (data.connected && finalLap) { flag.className = "session-flag fin"; flag.textContent = "🏁 Letzte Runde"; }
+    else { flag.className = "session-flag"; flag.textContent = ""; }
+  }
+  // Safety-Car-Statuswechsel als Rennleitungs-Meldung
+  if (data.connected && scStatus !== lastScMsg) {
+    if (scStatus === "sc") raceMsg("⚠", "SAFETY CAR", "#ffcc00");
+    else if (scStatus === "vsc") raceMsg("⚠", "VIRTUAL SAFETY CAR", "#ffcc00");
+    else if (scStatus === "none" && (lastScMsg === "sc" || lastScMsg === "vsc")) raceMsg("✓", "RENNEN FREIGEGEBEN", "#00e676");
+    lastScMsg = scStatus;
+  }
+
+  const drivers = data.drivers || [];
+  const body    = container;
+  const tpl     = document.getElementById("row-tpl");
+
+  body.style.height = drivers.length ? `${drivers.length * ROW_HEIGHT}px` : "0px";
+
+  // Quali: Pole-Zeit (schnellste Bestrunde) + Elimination-Schnitt je Q-Segment
+  let poleTime = 0, elimCut = 0;
+  if (sessionData.is_quali) {
+    const bls = drivers.map(d => d.best_lap || 0).filter(x => x > 0);
+    poleTime = bls.length ? Math.min(...bls) : 0;
+    if (sessionData.type === 5) elimCut = 16;        // Q1 -> P17–P22 raus
+    else if (sessionData.type === 6) elimCut = 10;   // Q2 -> P11–P16 raus
+  }
+
+  // Index -> Zeile EINMAL pro Frame mappen (statt O(n²) querySelectorAll je Fahrer)
+  // -> deutlich weniger Main-Thread-Arbeit = flüssigere Animationen.
+  const rowByIdx = {};
+  body.querySelectorAll(".driver-row").forEach(r => { rowByIdx[r.dataset.idx] = r; });
+
+  // Fahrer, die nicht mehr im Feld sind, sanft ausblenden statt hart entfernen.
+  const liveKeys = new Set(drivers.map(d => String(d.index)));
+  for (const key in rowByIdx) {
+    if (!liveKeys.has(key) && !rowByIdx[key].dataset.leaving) {
+      const r = rowByIdx[key];
+      r.dataset.leaving = "1";
+      r.classList.add("leaving");
+      setTimeout(() => r.remove(), 450);
+    }
+  }
+
+  drivers.forEach((d, idx) => {
+    // Eindeutiger Fahrer-Index als Key -> identische Namen können keine Zeile "stehlen"
+    let row = rowByIdx[String(d.index)] || null;
+    if (row && row.dataset.leaving) { row.remove(); row = null; }  // war im Ausblenden, kam zurück
+    const isNew = !row;
+
+    if (isNew) {
+      const clone = tpl.content.cloneNode(true);
+      row = clone.querySelector(".driver-row");
+      if (!row) { console.error("Template clone failed!"); return; }
+      row.dataset.idx = String(d.index);
+      row.classList.add("entering");                               // startet unsichtbar
+      // Neue Zeile OHNE Transform-Transition direkt an ihre Position setzen, damit sie
+      // dort einblendet statt aus der Ecke heranzugleiten.
+      row.style.transition = "none";
+      row.style.transform = `translate3d(0,${idx * ROW_HEIGHT}px,0)`;
+      body.appendChild(row);
+      void row.offsetWidth;                                        // Reflow -> Position "festnageln"
+      row.style.transition = "";                                   // CSS-Transition wieder aktiv
+      // Im nächsten Frame einblenden -> sanftes Fade-In statt Aufploppen.
+      requestAnimationFrame(() => requestAnimationFrame(() => row.classList.remove("entering")));
+    }
+    // Name kann sich ändern (Participants-Paket kommt nach Lap-Daten) -> immer setzen
+    row.querySelector(".driver-name").textContent = d.name;
+
+    const color = TEAM_COLORS[d.team] || "#fff";
+    row.querySelector(".team-color-strip").style.backgroundColor = color;
+    row.querySelector(".driver-team-sub").textContent = d.team || "";
+
+    row.querySelector(".rank").textContent = d.position;
+    const isFl = sessionData.fastest_lap_driver && d.name === sessionData.fastest_lap_driver;
+    // Nur die Zustands-Klassen togglen statt className zu überschreiben -> entering/leaving
+    // (Fade-In/-Out) bleiben erhalten.
+    row.classList.add("leaderboard-row", "driver-row");
+    row.classList.toggle("rank-1", d.position === 1);
+    row.classList.toggle("rank-2", d.position === 2);   // Silber
+    row.classList.toggle("rank-3", d.position === 3);   // Bronze
+    row.classList.toggle("fl-lap", isFl);
+    row.classList.toggle("elim-zone", elimCut > 0 && d.position > elimCut);   // Quali: Aus-Zone
+    row.dataset.even = idx % 2 === 0 ? "1" : "0";
+
+    const prevIdx = prevStandings.findIndex(p => p.index === d.index);
+    const ind = row.querySelector(".change-indicator");
+    if (!isNew && prevIdx !== -1 && prevIdx !== idx) {
+      const gained = prevIdx > idx;   // kleinerer Index = weiter vorne = Platz gewonnen
+      ind.innerHTML = gained ? "▲" : "▼";
+      ind.className = `change-indicator ${gained ? "change-up" : "change-down"}`;
+      row.dataset.lastMove = Date.now();
+      // Positions-Flash: Nummer kurz grün (gewonnen) / rot (verloren) aufleuchten.
+      const posEl = row.querySelector(".col-pos");
+      posEl.classList.remove("pos-flash-up", "pos-flash-down");
+      void posEl.offsetWidth;         // Reflow erzwingen -> Animation startet neu
+      posEl.classList.add(gained ? "pos-flash-up" : "pos-flash-down");
+    } else if (Date.now() - parseInt(row.dataset.lastMove || 0) > 5000) {
+      ind.innerHTML = "-";
+      ind.className = "change-indicator change-none";
+    }
+
+    // Smooth reorder: CSS-Transition interpoliert von der aktuellen Position,
+    // auch wenn mitten in einer laufenden Bewegung ein neues Ziel kommt.
+    const newY = idx * ROW_HEIGHT;
+    row.style.transform = `translate3d(0,${newY}px,0)`;
+
+    const gapEl = row.querySelector(".col-gap");
+    const lapEl = row.querySelector(".col-lap");
+    if (sessionData.is_quali) {
+      // BEST = eigene Bestrunde, GAP = Rückstand auf Pole
+      const bl = d.best_lap || 0;
+      gapEl.className = "col-gap"; gapEl.style.display = "";
+      gapEl.textContent = bl > 0 ? fmtTime(bl) : "—";
+      lapEl.style.display = "";
+      if (bl > 0 && poleTime > 0) {
+        const gp = bl - poleTime;
+        if (gp < 0.0005) { lapEl.textContent = "POLE"; lapEl.className = "col-lap leader"; }
+        else { lapEl.textContent = "+" + gp.toFixed(3); lapEl.className = "col-lap"; }
+      } else { lapEl.textContent = "—"; lapEl.className = "col-lap no-data"; }
+    } else if (d.dsq) {
+      gapEl.textContent = "DSQ"; gapEl.className = "col-gap dsq";
+      lapEl.textContent = "—";   lapEl.className = "col-lap no-data"; lapEl.style.display = "";
+    } else if (d.dnf) {
+      gapEl.textContent = "DNF"; gapEl.className = "col-gap dnf";
+      lapEl.textContent = "—";   lapEl.className = "col-lap no-data"; lapEl.style.display = "";
+    } else if (d.position === 1) {
+      // Führender: "LEADER"-Banner über beide Gap-Spalten
+      gapEl.textContent = "LEADER"; gapEl.className = "col-gap leader leader-banner";
+      lapEl.textContent = "";       lapEl.className = "col-lap"; lapEl.style.display = "none";
+    } else {
+      gapEl.textContent = fmtGap(d.gap_to_leader); gapEl.className = "col-gap";
+      lapEl.textContent = fmtGap(d.gap_to_ahead);  lapEl.className = "col-lap"; lapEl.style.display = "";
+    }
+
+    setTyreIcon(row.querySelector(".tyre-icon"), d.compound);
+    row.querySelector(".tyre-age").innerHTML = `Rnd <b>${d.tyre_age}</b>`;
+    // Pit-Popup beim Reifenwechsel (nur Rennen)
+    const lc = lastComp[d.index];
+    if (!sessionData.is_quali && lc && TYRE_ICONS[lc] && TYRE_ICONS[d.compound] && lc !== d.compound) showPitPop(d, lc, d.compound);
+    lastComp[d.index] = d.compound;
+
+    const s3 = (d.last_lap > 0 && d.sector1 > 0 && d.sector2 > 0)
+      ? d.last_lap - d.sector1 - d.sector2 : 0;
+    // Quali-Status (Box/Outlap/On-Track) einmal bestimmen, für Sektoren UND Statuspille.
+    const ds = d.driver_status;
+    const qualiSt = d.in_pit ? "box" : ds === 3 ? "out" : (ds === 1 || ds === 4) ? "track" : "box";
+    if (sessionData.is_quali) {
+      if (qualiSt === "track") {
+        // Hotlap / on track -> aktuell gefahrene Sektoren (und Bestzeiten mitführen)
+        row.querySelector(".s1").textContent = fmtTime(d.sector1) || "—";
+        row.querySelector(".s2").textContent = fmtTime(d.sector2) || "—";
+        row.querySelector(".s3").textContent = fmtTime(s3) || "—";
+        colorSectors(row, d.index, [d.sector1, d.sector2, s3]);
+      } else {
+        // Box / Outlap -> schnellste (Best-)Sektoren des Fahrers
+        showBestSectors(row, d.index);
+      }
+    } else {
+      row.querySelector(".s1").textContent = fmtTime(d.sector1) || "—";
+      row.querySelector(".s2").textContent = fmtTime(d.sector2) || "—";
+      row.querySelector(".s3").textContent = fmtTime(s3) || "—";
+      clearSectorColors(row);
+    }
+    // Q5: ungültige (Track-Limits-)Runde auf einem Hotlap -> Sektoren rot
+    row.classList.toggle("lap-invalid", sessionData.is_quali && qualiSt === "track" && !!d.lap_invalid);
+
+    const drsEl = row.querySelector(".col-drs");
+    if (sessionData.is_quali) {
+      drsEl.textContent = qualiSt === "track" ? "ON TRACK" : qualiSt === "out" ? "OUTLAP" : "BOX";
+      drsEl.className = "col-drs st st-" + qualiSt;
+    } else if (d.in_pit) {
+      drsEl.textContent = "PIT";
+      drsEl.className   = "col-drs in-pit-q";
+    } else {
+      drsEl.textContent = boostLabel;
+      if (isF126) {
+        // 2026 Overtake Mode (Car-Telemetry-2-Paket): blau leuchtend wenn aktiv,
+        // dezent blau wenn verfügbar (im 1s-Fenster), sonst aus.
+        drsEl.className = d.overtake_active ? "col-drs boost-active"
+                       : d.overtake_available ? "col-drs boost-ready"
+                       : "col-drs";
+      } else {
+        drsEl.className = d.drs ? "col-drs active" : "col-drs";
+      }
+    }
+  });
+
+  // Rennleitung: nur das Wichtige — Track Limits (gelb) und Strafen (rot).
+  // (Überholungen werden bewusst NICHT mehr gemeldet.)
+  const rc = data.race_control || [];
+  if (rc.length && rc[rc.length - 1].id < lastRcId) lastRcId = 0;   // neue Session -> IDs neu
+  rc.forEach(mEntry => {
+    if (mEntry.id <= lastRcId) return;
+    lastRcId = mEntry.id;
+    if (mEntry.type === "penalty") raceMsg("⚑", esc(mEntry.text), "#ff5a5a");
+    else if (mEntry.type === "tracklimit") raceMsg("⚠", esc(mEntry.text), "#ffcc00");
+    else if (mEntry.type === "mom") raceMsg("⚡", esc(mEntry.text), "#2fd9ff");
+    else raceMsg("•", esc(mEntry.text), "#9aa0aa");
+  });
+  // Elimination-Linie positionieren
+  const elimLine = document.getElementById("elim-line");
+  if (elimLine) {
+    if (elimCut > 0) { elimLine.style.display = "block"; elimLine.style.top = (elimCut * ROW_HEIGHT) + "px"; }
+    else elimLine.style.display = "none";
+  }
+  updateBattlePrediction(drivers, data.connected && !sessionData.is_quali);
+
+  // Tower auf die Canvas-Höhe einpassen, damit das komplette Feld (P1..letzter)
+  // sichtbar bleibt und unten nichts abgeschnitten wird. Skaliert von oben-links,
+  // bleibt also links verankert.
+  const stageH   = window.innerHeight || 1080;
+  const naturalH = outerContainer.offsetHeight;          // ungescalete Layout-Höhe
+  const availH   = (stageH - 40) * 0.80;                  // Tower nur ~80% der Höhe -> kompakter, nicht über den ganzen Screen
+  const fit      = naturalH > availH ? availH / naturalH : 1;
+  outerContainer.style.transformOrigin = "top left";
+  outerContainer.style.transform = fit < 1 ? `scale(${fit.toFixed(4)})` : "";
+
+  updateBattleBox(drivers, data.connected && !sessionData.is_quali);   // in der Quali keine Battle-Boxen
+
+  // R6: Box-Strategie-Panel (nur Rennen) — Top 5 mit Stint-Historie + Stopps
+  const stratPanel = document.getElementById("strat-panel");
+  if (stratPanel) {
+    if (!sessionData.is_quali && data.connected && drivers.length) {
+      const top = drivers.slice(0, 5);
+      stratPanel.querySelector(".strat-rows").innerHTML = top.map(d => {
+        const st = d.stints || [];
+        const hist = st.length
+          ? st.map((c, k) => (k ? `<span class="arr">→</span>` : "") + (TYRE_ICONS[c] ? `<img src="static/${c}.png" alt="${c}">` : "")).join("")
+          : `<span class="arr">—</span>`;
+        const stops = d.pit_stops || 0;
+        return `<div class="strat-row" style="--row-team:${teamColor(d.team)}">`
+          + `<span class="strat-pos">${d.position}</span><span class="strat-name">${esc(d.name)}</span>`
+          + `<span class="strat-stints">${hist}</span>`
+          + `<span class="strat-stops"><b>${stops}</b> ${stops === 1 ? "Stop" : "Stops"}</span></div>`;
+      }).join("");
+      stratPanel.style.display = "block";
+    } else {
+      stratPanel.style.display = "none";
+    }
+  }
+
+  prevStandings = drivers;
+}
+
+// ── Bottom-center "Battle"-Box (2+ Fahrer, ganze Kampfgruppe) ──────────────────
+const BATTLE_THRESH = 1.5;   // Abstand zum Vordermann < 1,5 s = "im Kampf"
+const BATTLE_MAX    = 6;     // max. Fahrer in der Box
+
+const teamColor = team => TEAM_COLORS[team] || "#fff";
+
+const BATTLE_ROW_H = 44;   // Höhe einer Battle-Zeile (px)
+function barStyle(gap) {
+  const close = Math.max(0, Math.min(1, (1.0 - gap) / 1.0));   // erst < 1,0 s aktiv, voll bei 0
+  return `width:${(close * 100).toFixed(0)}%;background:rgb(255,${Math.round(204 - 140 * close)},${Math.round(64 * close)})`;
+}
+function battleRowHTML(d, gap) {
+  const tyre = tyreIconHTML(d.compound);
+  const lead = gap == null;   // Spitze der Gruppe -> kein Vordermann
+  const gapSpan = lead ? `<span class="bd-gap bd-gap-lead">—</span>` : `<span class="bd-gap">+${gap.toFixed(3)}</span>`;
+  const bar = `<div class="gap-bar" style="${lead ? "display:none" : ""}"><div class="gap-bar-fill" style="${lead ? "" : barStyle(gap)}"></div></div>`;
+  const name = (d.name || "").replace(/</g, "&lt;");
+  return `<div class="battle-row" data-idx="${d.index}" style="--row-team:${teamColor(d.team)}">`
+       + `<span class="bd-pos">${d.position}</span>`
+       + `<span class="bd-name">${name}</span>`
+       + `<span class="bd-right">${gapSpan}${tyre}</span>`   // Reifen rechts außen
+       + bar + `</div>`;   // horizontaler Gap-Balken an der Unterkante
+}
+
+function setRowTyre(row, d) {
+  setTyreIcon(row.querySelector(".bd-tyre"), d.compound);
+}
+function setRowGap(row, gap) {
+  const el = row.querySelector(".bd-gap");
+  const bar = row.querySelector(".gap-bar");
+  if (gap == null) {
+    if (el.textContent !== "—") el.textContent = "—";
+    if (el.className !== "bd-gap bd-gap-lead") el.className = "bd-gap bd-gap-lead";
+    if (bar) bar.style.display = "none";
+    return;
+  }
+  el.textContent = "+" + gap.toFixed(3);
+  if (el.className !== "bd-gap") el.className = "bd-gap";
+  if (bar) { bar.style.display = ""; bar.querySelector(".gap-bar-fill").style.cssText = barStyle(gap); }
+}
+
+function showBattleBox(box) {
+  const wasHiding = box.dataset.hiding === "1";
+  box.dataset.hiding = "0";
+  box.classList.remove("out");
+  if (box.style.display !== "block" || wasHiding) {
+    box.style.display = "block";
+    box.classList.remove("in"); void box.offsetWidth; box.classList.add("in");
+  }
+}
+function hideBattleBox(box) {
+  if (box.style.display === "none" || box.dataset.hiding === "1") return;
+  box.dataset.hiding = "1";
+  box.classList.remove("in");
+  box.classList.add("out");
+  setTimeout(() => {
+    if (box.dataset.hiding === "1") {
+      box.style.display = "none";
+      box.classList.remove("out");
+      box.dataset.hiding = "0";
+      const rows = box.querySelector(".battle-rows");
+      rows.innerHTML = ""; rows.dataset.members = "";
+    }
+  }, 500);
+}
+
+function findBattleGroups(drivers) {
+  // Alle zusammenhängenden Ketten: jeder Abstand zum Vordermann < THRESH.
+  const groups = [];
+  let cur = [];
+  const flush = () => { if (cur.length >= 2) groups.push(cur); };
+  for (const d of drivers) {
+    if (d.dnf || d.dsq || d.in_pit) { flush(); cur = []; continue; }
+    if (cur.length === 0) { cur = [d]; continue; }
+    const g = d.gap_to_ahead;
+    if (g > 0 && g < BATTLE_THRESH) cur.push(d);
+    else { flush(); cur = [d]; }
+  }
+  flush();
+  return groups;
+}
+
+function updateBattleBox(drivers, connected) {
+  const boxes = document.querySelectorAll("#battle-area .battle-box");
+  let groups = connected ? findBattleGroups(drivers) : [];
+  groups.sort((a, b) => a[0].position - b[0].position);   // vorderster Kampf zuerst (links)
+  groups = groups.slice(0, boxes.length).map(g => g.length > BATTLE_MAX ? g.slice(0, BATTLE_MAX) : g);
+  boxes.forEach((box, k) => {
+    const g = groups[k];
+    if (!g) { hideBattleBox(box); return; }
+    showBattleBox(box);
+    const front = g[0], back = g[g.length - 1];
+    box.querySelector(".battle-header").textContent = g.length === 2
+      ? `BATTLE FOR P${front.position}`
+      : `BATTLE · P${front.position}–P${back.position}`;
+    // Kampf-Vorhersage hier statt im Ticker: nur wenn beide Fahrer in dieser Box sind.
+    const sub = box.querySelector(".battle-sub");
+    const inGroup = battlePred && g.some(d => d.index === battlePred.aIdx) && g.some(d => d.index === battlePred.bIdx);
+    if (inGroup) {
+      const laps = battlePred.laps;
+      sub.innerHTML = `<span class="bs-ico">⚔</span><span class="bs-txt">Kampf in</span>`
+        + `<span class="bs-laps${laps <= 1 ? " now" : ""}">${laps}</span>`
+        + `<span class="bs-unit">${laps === 1 ? "Runde" : "Runden"}</span>`;
+      if (sub.dataset.laps !== String(laps)) {        // bei Änderung kurz "poppen"
+        sub.dataset.laps = String(laps);
+        const ln = sub.querySelector(".bs-laps");
+        ln.classList.remove("bs-pop"); void ln.offsetWidth; ln.classList.add("bs-pop");
+      }
+      sub.classList.add("show");
+    } else {
+      sub.classList.remove("show");
+      sub.textContent = "";
+      sub.dataset.laps = "";
+    }
+    syncBattleRows(box.querySelector(".battle-rows"), g);
+  });
+}
+
+function syncBattleRows(rowsEl, g) {
+  rowsEl.style.height = (g.length * BATTLE_ROW_H) + "px";
+  const memberSig = g.map(d => d.index).sort((a, b) => a - b).join(",");
+  if (rowsEl.dataset.members !== memberSig) {
+    // Andere Fahrer im Kampf -> sauber neu aufbauen (sonst überlappen alte/neue Zeilen).
+    rowsEl.dataset.members = memberSig;
+    rowsEl.innerHTML = "";
+    g.forEach((d, i) => {
+      rowsEl.insertAdjacentHTML("beforeend", battleRowHTML(d, i === 0 ? null : d.gap_to_ahead));
+      const row = rowsEl.lastElementChild;
+      row.classList.add("entering");
+      row.style.transition = "none";
+      row.style.transform = `translateY(${i * BATTLE_ROW_H}px)`;
+      void row.offsetWidth;
+      row.style.transition = "";
+      requestAnimationFrame(() => requestAnimationFrame(() => row.classList.remove("entering")));
+    });
+  } else {
+    // Gleiche Fahrer -> Position smooth verschieben (CSS-Transition) + Werte aktualisieren.
+    g.forEach((d, i) => {
+      const row = rowsEl.querySelector(`[data-idx="${d.index}"]`);
+      if (!row) return;
+      row.style.transform = `translateY(${i * BATTLE_ROW_H}px)`;
+      row.querySelector(".bd-pos").textContent = d.position;
+      row.style.setProperty("--row-team", teamColor(d.team));
+      setRowTyre(row, d);
+      setRowGap(row, i === 0 ? null : d.gap_to_ahead);
+    });
+  }
+}
+
+fetchAndRender();
+setInterval(fetchAndRender, 200);
+</script>
+</body>
+</html>
