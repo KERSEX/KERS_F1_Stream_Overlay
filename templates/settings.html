@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KERS Overlay – Einstellungen</title>
+<style>
+:root{ --bg:#0f0f14; --card:#181820; --line:rgba(255,255,255,.09); --txt:#e9e9f0; --muted:#8e8e9e;
+       --red:#e10600; --green:#00e676; --yellow:#ffcc00; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans-serif;padding:26px 16px 90px}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:26px;font-weight:800;letter-spacing:1px;border-bottom:2px solid var(--red);padding-bottom:12px}
+h1 small{display:block;font-size:13px;font-weight:400;color:var(--muted);margin-top:4px}
+.status{position:fixed;top:14px;right:16px;font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;
+        background:rgba(0,230,118,.15);color:var(--green);opacity:0;transition:opacity .3s;z-index:10}
+.status.show{opacity:1}
+.grp{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:16px}
+.grp h2{font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.row:last-child{border-bottom:none}
+.row label{font-size:14px;flex:1}
+.row label small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+/* Toggle */
+.tgl{position:relative;width:46px;height:25px;border-radius:14px;background:rgba(255,255,255,.13);cursor:pointer;transition:background .25s;flex-shrink:0}
+.tgl.on{background:var(--green)}
+.tgl::after{content:"";position:absolute;top:2.5px;left:2.5px;width:20px;height:20px;border-radius:50%;background:#fff;transition:left .25s}
+.tgl.on::after{left:23.5px}
+/* Slider + Zahl */
+.ctl{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.ctl input[type=range]{width:150px;accent-color:var(--red)}
+.ctl .val{font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;min-width:52px;text-align:right}
+.ctl input[type=number]{width:70px;background:#101016;border:1px solid var(--line);border-radius:6px;color:#fff;padding:5px 8px;font-size:13px;text-align:right}
+.ctl select.sel{background:#101016;border:1px solid var(--line);border-radius:6px;color:#fff;padding:6px 9px;font-size:13px;cursor:pointer}
+/* Presets */
+.presets{display:flex;gap:10px;flex-wrap:wrap}
+.pbtn{flex:1;min-width:110px;padding:12px;border-radius:10px;border:2px solid var(--line);background:rgba(255,255,255,.03);
+      color:#fff;font-size:14px;font-weight:700;cursor:pointer;transition:border .25s, box-shadow .25s;text-align:center}
+.pbtn small{display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:3px}
+.pbtn.active{border-color:var(--red);box-shadow:0 0 14px rgba(225,6,0,.35)}
+.reset{margin-top:22px;width:100%;padding:11px;border-radius:10px;border:1px solid rgba(225,6,0,.5);background:rgba(225,6,0,.10);
+       color:#ff8a80;font-size:13px;font-weight:700;cursor:pointer}
+.hint{margin-top:14px;font-size:12px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="status" id="status">✓ Gespeichert</div>
+<div class="wrap">
+  <h1>Overlay-Einstellungen<small>Änderungen wirken sofort im laufenden Overlay — auch von Laptop/Handy aus (http://&lt;PC-IP&gt;:5100/settings)</small></h1>
+
+  <div class="grp">
+    <h2>Layout-Presets</h2>
+    <div class="presets" id="presets"></div>
+  </div>
+
+  <div class="grp">
+    <h2>Komponenten</h2>
+    <div id="toggles"></div>
+  </div>
+
+  <div class="grp">
+    <h2>Leaderboard-Tower</h2>
+    <div class="row"><label>Skalierung<small>0 = automatisch an die Bildhöhe anpassen</small></label>
+      <div class="ctl"><input type="range" min="0" max="2" step="0.05" data-k="scale"><span class="val" data-v="scale"></span></div></div>
+    <div class="row"><label>Zeilen (Top-N)<small>0 = alle Fahrer anzeigen</small></label>
+      <div class="ctl"><input type="number" min="0" max="24" step="1" data-k="rows"></div></div>
+    <div class="row"><label>Ergebnis halten<small>Sekunden, die das letzte Q/R-Ergebnis nach Session-Ende stehen bleibt</small></label>
+      <div class="ctl"><input type="number" min="0" max="3600" step="30" data-k="holds"></div></div>
+    <div class="row"><label>Battle-Schwelle<small>Abstand in Sekunden, ab dem zwei Autos als „Battle" gelten</small></label>
+      <div class="ctl"><input type="range" min="0.5" max="3" step="0.1" data-k="battlethresh"><span class="val" data-v="battlethresh"></span></div></div>
+    <div class="row"><label>Damage blinkt ab<small>% Flügelschaden, ab dem das Icon pulsiert</small></label>
+      <div class="ctl"><input type="range" min="30" max="90" step="5" data-k="dmgcrit"><span class="val" data-v="dmgcrit"></span></div></div>
+  </div>
+
+  <div class="grp">
+    <h2>Trackmap</h2>
+    <div class="row"><label>Größe (px)</label>
+      <div class="ctl"><input type="range" min="200" max="640" step="10" data-k="mapsize"><span class="val" data-v="mapsize"></span></div></div>
+    <div class="row"><label>Drehung (°)</label>
+      <div class="ctl"><input type="range" min="0" max="359" step="1" data-k="maprot"><span class="val" data-v="maprot"></span></div></div>
+    <div class="row"><label>Horizontal spiegeln</label><div class="tgl" data-k="mapflip"></div></div>
+    <div class="row"><label>Position</label>
+      <div class="ctl"><select class="sel" data-sel="mapcorner">
+        <option value="tl">oben links</option><option value="tc">oben mitte</option><option value="tr">oben rechts</option>
+        <option value="lc">links mitte</option><option value="rc">rechts mitte</option>
+        <option value="bl">unten links</option><option value="bc">unten mitte</option><option value="br">unten rechts</option>
+      </select></div></div>
+    <div class="row"><label>Punktgröße (Autos)</label>
+      <div class="ctl"><input type="range" min="0.5" max="2.5" step="0.1" data-k="dotsize"><span class="val" data-v="dotsize"></span></div></div>
+    <div class="row"><label>Positions-Nummern</label><div class="tgl" data-k="mapnumbers"></div></div>
+    <div class="row"><label>Marshal-Flaggen / Sektorfarben</label><div class="tgl" data-k="mapflags"></div></div>
+  </div>
+
+  <div class="grp">
+    <h2>Banner &amp; Einblendungen</h2>
+    <div class="row"><label>Lower-Third Dauer (s)</label>
+      <div class="ctl"><input type="range" min="2" max="10" step="0.5" data-k="ltdur"><span class="val" data-v="ltdur"></span></div></div>
+    <div class="row"><label>Fastest-Lap-Banner Dauer (s)</label>
+      <div class="ctl"><input type="range" min="2" max="10" step="0.5" data-k="flbdur"><span class="val" data-v="flbdur"></span></div></div>
+  </div>
+
+  <div class="grp">
+    <h2>Branding</h2>
+    <div class="row"><label>Titel<small>Text-Slot oben im Tower-Header (leer = aus)</small></label>
+      <div class="ctl"><input type="text" data-str="brand_title" placeholder="KERS F1 OVERLAY" style="width:190px;padding:6px 8px"></div></div>
+    <div class="row"><label>Akzentfarbe<small>färbt die roten Akzente im ganzen Overlay</small></label>
+      <div class="ctl"><input type="color" data-str="brand_accent" style="width:48px;height:32px;padding:0;border:none;background:none"></div></div>
+    <div class="row"><label>Header-Streifen<small>Linie unter dem Tower-Header — leer = Akzentfarbe</small></label>
+      <div class="ctl"><input type="text" data-str="header_color" placeholder="#e10600 oder leer" style="width:150px;padding:6px 8px"></div></div>
+    <div class="row"><label>Row-Streifen<small>linker Balken der Zeilen — leer = Team-Farbe</small></label>
+      <div class="ctl"><input type="text" data-str="row_color" placeholder="#hex oder leer" style="width:150px;padding:6px 8px"></div></div>
+  </div>
+
+  <button class="reset" id="reset">Alles auf Standard zurücksetzen</button>
+  <div class="hint">Gespeichert wird automatisch. URL-Parameter im Overlay (z.&nbsp;B. ?map=0) überschreiben einzelne Werte weiterhin.</div>
+</div>
+
+<script>
+// Schalter-Definitionen (Key -> Label + Beschreibung)
+const TOGGLES = [
+  ["tower",      "Leaderboard-Tower",       "die Haupttabelle links"],
+  ["battles",    "Battle-Boxen",            "Kämpfe unten mittig (+ Hotlap-Boxen in der Quali)"],
+  ["map",        "Trackmap",                "Minimap oben rechts"],
+  ["onboard",    "Onboard-Telemetrie",      "Speed / Gas / Bremse unten links"],
+  ["deltabar",   "Live-Delta im Onboard",   "Delta zur persönlichen Bestrunde"],
+  ["lights",     "Start-Ampel",             "5 Lichter + Lights Out"],
+  ["damage",     "Damage-Icons",            "Flügelschaden im Tower"],
+  ["msgs",       "Rennleitungs-Meldungen",  "Strafen, Track-Limits usw. oben mittig"],
+  ["flbanner",   "Fastest-Lap-Banner",      "großes lila Banner bei schnellster Runde"],
+  ["lowerthird", "Lower-Third",             "Namensleiste beim Kamerawechsel"],
+  ["undercut",   "Undercut-Alarm",          "Meldung bei Undercut-Versuchen"],
+  ["ticker",     "Wetter-Ticker",           "Wetter/Vorhersage im Kopfbereich"],
+  ["pred",       "Kampf-Countdown",         "Vorhersage „Kampf in X Runden“ über der Battle-Box"],
+  ["danger",     "Gefahrenzone (Quali)",    "Countdown für den Fahrer am Elimination-Strich"],
+  ["comeback",   "Comeback-Badge",          "▲/▼ Plätze seit dem Start (im Rennen)"],
+  ["pbflash",    "Bestrunde-Flash",         "Zeile blitzt grün (persönl. Best) / lila (Session-Best)"],
+  ["battlemap",  "Battle-Glühen (Map)",     "vorderster Kampf pulsiert auf der Minimap"],
+  ["fresh",      "Frische-Reifen (Battle)", "„−N Rnd“ am Jäger mit deutlich frischeren Reifen"],
+  ["strat",      "Reifenstrategie im Lower-Third","Stint-Verlauf + Reifenalter beim Kamera-Fahrer"],
+  ["pitproj",    "Pit-Projektion (auto)",   "„nach Boxenstopp P?“ für den Kamera-Fahrer mit alten Reifen"],
+];
+const PRESETS = {
+  voll:    { label:"Voll",    desc:"alles an",                 set:{ tower:true,battles:true,map:true,onboard:true,lights:true,damage:true,msgs:true,flbanner:true,lowerthird:true,undercut:true,ticker:true,deltabar:true,pred:true,danger:true,comeback:true,pbflash:true,battlemap:true,fresh:true,strat:true,pitproj:true,rows:0 } },
+  kompakt: { label:"Kompakt", desc:"Tower + Map + Wichtiges",  set:{ tower:true,battles:true,map:true,onboard:false,lights:true,damage:true,msgs:true,flbanner:true,lowerthird:false,undercut:false,ticker:false,deltabar:false,pred:true,danger:true,comeback:true,pbflash:true,battlemap:true,fresh:true,strat:true,pitproj:true,rows:0 } },
+  minimal: { label:"Minimal", desc:"nur Top 10, sonst nichts", set:{ tower:true,battles:false,map:false,onboard:false,lights:true,damage:false,msgs:false,flbanner:false,lowerthird:false,undercut:false,ticker:false,deltabar:false,pred:false,danger:false,comeback:false,pbflash:false,battlemap:false,fresh:false,strat:false,pitproj:false,rows:10 } },
+};
+
+let S = {};            // aktueller Stand vom Server
+let saveTimer = null;
+
+function flash(){ const el=document.getElementById("status"); el.classList.add("show"); clearTimeout(flash._t); flash._t=setTimeout(()=>el.classList.remove("show"),1200); }
+function save(patch){
+  Object.assign(S, patch);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(patch)});
+    flash();
+  }, 250);
+  renderAll();   // UI sofort spiegeln
+}
+
+function renderToggles(){
+  const host=document.getElementById("toggles");
+  host.innerHTML = TOGGLES.map(([k,l,d]) =>
+    `<div class="row"><label>${l}<small>${d}</small></label><div class="tgl ${S[k]?"on":""}" data-k="${k}"></div></div>`).join("");
+}
+function renderInputs(){
+  document.querySelectorAll("input[data-k]").forEach(inp=>{
+    const k=inp.dataset.k;
+    if (document.activeElement!==inp) inp.value = S[k];
+  });
+  document.querySelectorAll("input[data-str]").forEach(inp=>{   // A2: Text/Farbe-Felder
+    if (document.activeElement!==inp) inp.value = S[inp.dataset.str] || "";
+  });
+  document.querySelectorAll("select[data-sel]").forEach(sel=>{
+    if (document.activeElement!==sel) sel.value = S[sel.dataset.sel];
+  });
+  document.querySelectorAll(".val[data-v]").forEach(v=>{
+    const k=v.dataset.v; let val=S[k];
+    if(k==="scale") val = (val>0?val.toFixed(2):"auto");
+    else if(typeof val==="number") val = (val%1===0? val : val.toFixed(1));
+    v.textContent = val + (k==="maprot"?"°":k==="mapsize"?" px":k==="dmgcrit"?" %":"");
+  });
+  document.querySelectorAll(".grp .tgl").forEach(t=>{ if(t.dataset.k) t.classList.toggle("on", !!S[t.dataset.k]); });
+}
+function renderPresets(){
+  const host=document.getElementById("presets");
+  host.innerHTML = Object.entries(PRESETS).map(([id,p])=>
+    `<button class="pbtn ${S.preset===id?"active":""}" data-p="${id}">${p.label}<small>${p.desc}</small></button>`).join("");
+}
+function renderAll(){ renderToggles(); renderInputs(); renderPresets(); }
+
+document.addEventListener("click", e=>{
+  const t=e.target.closest(".tgl"); if(t&&t.dataset.k){ save({[t.dataset.k]: !S[t.dataset.k]}); return; }
+  const p=e.target.closest(".pbtn"); if(p){ const pr=PRESETS[p.dataset.p]; save({...pr.set, preset:p.dataset.p}); return; }
+});
+document.addEventListener("input", e=>{
+  const sk=e.target.dataset && e.target.dataset.str; if(sk){ save({[sk]: e.target.value}); return; }   // A2: Text/Farbe
+  const k=e.target.dataset && e.target.dataset.k; if(!k) return;
+  save({[k]: parseFloat(e.target.value)});
+});
+document.addEventListener("change", e=>{   // String-Dropdowns (z.B. Trackmap-Position)
+  const k=e.target.dataset && e.target.dataset.sel; if(!k) return;
+  save({[k]: e.target.value});
+});
+document.getElementById("reset").addEventListener("click", async ()=>{
+  const r = await fetch("/api/settings/reset",{method:"POST"});
+  S = await r.json(); renderAll(); flash();
+});
+
+(async ()=>{ S = await (await fetch("/api/settings")).json(); renderAll(); })();
+// Falls jemand parallel (anderes Gerät) ändert: alle 3s abgleichen
+setInterval(async ()=>{ if(saveTimer) return; const r=await fetch("/api/settings"); S=await r.json(); renderAll(); }, 3000);
+</script>
+</body>
+</html>
